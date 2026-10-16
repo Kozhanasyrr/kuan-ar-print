@@ -73,6 +73,22 @@ AFRAME.registerComponent('smooth-follow',{
   }
 });
 </script>
+<script>
+// Shows the video only where mask.png is white (portrait + grey circle), so the white margin and frame stay see-through
+AFRAME.registerComponent('video-mask',{
+  schema:{src:{type:'string'}},
+  init:function(){
+    var el=this.el,src=this.data.src;
+    new THREE.TextureLoader().load(src,function(tex){
+      var apply=function(){
+        var m=el.getObject3D('mesh'); if(!m||!m.material){return setTimeout(apply,100);}
+        m.material.alphaMap=tex; m.material.transparent=true; m.material.depthWrite=false; m.material.needsUpdate=true;
+      };
+      apply();
+    });
+  }
+});
+</script>
 </head>
 <body>
 
@@ -86,7 +102,7 @@ AFRAME.registerComponent('smooth-follow',{
   <a-camera position="0 0 0" look-controls="enabled: false" cursor="rayOrigin: mouse"></a-camera>
   <a-entity id="target" mindar-image-target="targetIndex: 0"></a-entity>
   <a-entity id="follower" smooth-follow="target: #target">
-    <a-video src="#vid" position="0 0 0" width="1" height="1" rotation="0 0 0"></a-video>
+    <a-video src="#vid" video-mask="src: ./mask.png" position="0 0 0" width="1" height="1" rotation="0 0 0"></a-video>
   </a-entity>
 </a-scene>
 
