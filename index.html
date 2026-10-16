@@ -47,6 +47,32 @@
 </style>
 <script src="./js/aframe.min.js"></script>
 <script src="./js/mindar-image-aframe.prod.js"></script>
+<script>
+// Smooths the pose given by the tracker: heavy smoothing for tiny shakes, light for real movement
+AFRAME.registerComponent('smooth-follow',{
+  schema:{target:{type:'selector'}},
+  init:function(){
+    this.p=new THREE.Vector3();this.q=new THREE.Quaternion();this.s=new THREE.Vector3(1,1,1);
+    this.tp=new THREE.Vector3();this.tq=new THREE.Quaternion();this.ts=new THREE.Vector3();
+    this.has=false;this.el.object3D.matrixAutoUpdate=false;this.el.object3D.visible=false;
+  },
+  tick:function(){
+    var t=this.data.target&&this.data.target.object3D,o=this.el.object3D;
+    if(!t)return;
+    if(!t.visible){o.visible=false;this.has=false;return;}
+    t.updateWorldMatrix(true,false);
+    t.matrixWorld.decompose(this.tp,this.tq,this.ts);
+    if(!this.has){this.p.copy(this.tp);this.q.copy(this.tq);this.s.copy(this.ts);this.has=true;}
+    else{
+      var sc=Math.max(this.ts.x,1e-6);
+      var d=this.tp.distanceTo(this.p)/sc, a=this.tq.angleTo(this.q);
+      var k=Math.min(1,0.06+12*d+3*a);
+      this.p.lerp(this.tp,k);this.q.slerp(this.tq,k);this.s.lerp(this.ts,k);
+    }
+    o.matrix.compose(this.p,this.q,this.s);o.matrixWorldNeedsUpdate=true;o.visible=true;
+  }
+});
+</script>
 </head>
 <body>
 
@@ -58,7 +84,8 @@
     <video id="vid" src="./ar.mp4" preload="auto" loop muted playsinline webkit-playsinline crossorigin="anonymous"></video>
   </a-assets>
   <a-camera position="0 0 0" look-controls="enabled: false" cursor="rayOrigin: mouse"></a-camera>
-  <a-entity id="target" mindar-image-target="targetIndex: 0">
+  <a-entity id="target" mindar-image-target="targetIndex: 0"></a-entity>
+  <a-entity id="follower" smooth-follow="target: #target">
     <a-video src="#vid" position="0 0 0" width="1" height="1" rotation="0 0 0"></a-video>
   </a-entity>
 </a-scene>
