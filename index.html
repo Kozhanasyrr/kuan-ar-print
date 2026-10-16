@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#14181d">
+<title>Kuan.artist AR</title>
+<style>
+  :root{
+    --bg:#14181d; --fg:#eef1f4; --muted:#9aa5b1; --accent:#6f9bc4; --accent-fg:#0d1217;
+    --font:"Helvetica Neue",Helvetica,Arial,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);overflow:hidden}
+  a-scene{position:fixed;inset:0;width:100%;height:100%}
+  .screen{
+    position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:20px;text-align:center;background:var(--bg);
+    padding:max(24px,env(safe-area-inset-top,0px)) max(24px,env(safe-area-inset-right,0px)) max(24px,env(safe-area-inset-bottom,0px)) max(24px,env(safe-area-inset-left,0px));
+  }
+  .screen[hidden]{display:none}
+  .thumb{width:min(62vw,260px);aspect-ratio:1/1;border-radius:4px;box-shadow:0 10px 40px rgba(0,0,0,.45);object-fit:cover}
+  h1{margin:0;font-size:1.5rem;font-weight:600;letter-spacing:.01em;text-wrap:balance}
+  p{margin:0;max-width:30ch;line-height:1.5;color:var(--muted);text-wrap:balance}
+  button{
+    appearance:none;border:0;border-radius:999px;background:var(--accent);color:var(--accent-fg);
+    font:600 1rem var(--font);padding:15px 34px;min-height:48px;cursor:pointer;
+  }
+  button:focus-visible{outline:3px solid var(--fg);outline-offset:3px}
+  button:active{transform:scale(.98)}
+  .hint{
+    position:fixed;z-index:10;left:50%;transform:translateX(-50%);
+    bottom:max(28px,calc(env(safe-area-inset-bottom,0px) + 16px));
+    padding:10px 18px;border-radius:999px;background:rgba(20,24,29,.78);color:var(--fg);
+    font-size:.95rem;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+    transition:opacity .25s ease;white-space:nowrap;
+  }
+  .hint[hidden]{display:none}
+  .hint.off{opacity:0}
+  .err{color:#f2a0a0}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<script src="./js/aframe.min.js"></script>
+<script src="./js/mindar-image-aframe.prod.js"></script>
+</head>
+<body>
+
+<a-scene id="scene"
+  mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; maxTrack: 1; warmupTolerance: 5; missTolerance: 8; uiLoading: no; uiScanning: no; uiError: no;"
+  color-space="sRGB" renderer="colorManagement: true; physicallyCorrectLights: true; antialias: false"
+  vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+  <a-assets>
+    <video id="vid" src="./ar.mp4" preload="auto" loop muted playsinline webkit-playsinline crossorigin="anonymous"></video>
+  </a-assets>
+  <a-camera position="0 0 0" look-controls="enabled: false" cursor="rayOrigin: mouse"></a-camera>
+  <a-entity id="target" mindar-image-target="targetIndex: 0">
+    <a-video src="#vid" position="0 0 0" width="1" height="1" rotation="0 0 0"></a-video>
+  </a-entity>
+</a-scene>
+
+<div class="hint off" id="hint" hidden>Наведите камеру на принт</div>
+
+<main class="screen" id="start">
+  <img class="thumb" src="./print.jpg" alt="Принт, который оживёт в камере">
+  <h1>Оживи принт</h1>
+  <p id="msg">Откройте камеру и наведите её на принт на одежде.</p>
+  <button id="go" type="button">Открыть камеру</button>
+</main>
+
+<script>
+(function(){
+  var scene=document.getElementById('scene');
+  var video=document.getElementById('vid');
+  var startEl=document.getElementById('start');
+  var msg=document.getElementById('msg');
+  var go=document.getElementById('go');
+  var hint=document.getElementById('hint');
+  var started=false;
+
+  function fail(text){
+    msg.textContent=text; msg.classList.add('err');
+    startEl.hidden=false; hint.hidden=true; go.textContent='Попробовать снова'; started=false;
+  }
+
+  document.getElementById('target').addEventListener('targetFound',function(){
+    console.log('TARGET_FOUND');
+    hint.classList.add('off');
+    var p=video.play(); if(p&&p.catch)p.catch(function(){});
+  });
+  document.getElementById('target').addEventListener('targetLost',function(){
+    console.log('TARGET_LOST');
+    hint.classList.remove('off');
+    video.pause();
+  });
+
+  go.addEventListener('click',function(){
+    if(started)return; started=true;
+    go.disabled=true; msg.classList.remove('err'); msg.textContent='Загружаю…';
+    // a tap is needed on phones before video may play: start and pause it once
+    var u=video.play(); if(u&&u.then)u.then(function(){video.pause();video.currentTime=0;}).catch(function(){});
+    var sys=scene.systems['mindar-image-system'];
+    if(!sys){ go.disabled=false; return fail('Не удалось загрузить AR. Обновите страницу.'); }
+    Promise.resolve(sys.start()).then(function(){
+      console.log('AR_STARTED');
+      startEl.hidden=true; hint.hidden=false; hint.classList.remove('off');
+    }).catch(function(e){
+      console.log('AR_ERROR',e&&e.message);
+      go.disabled=false;
+      fail('Нет доступа к камере. Разрешите камеру для этого сайта и попробуйте снова.');
+    });
+  });
+
+  // stop the camera when the tab is hidden
+  document.addEventListener('visibilitychange',function(){
+    var sys=scene.systems['mindar-image-system'];
+    if(!sys||!started)return;
+    if(document.hidden){ try{sys.pause(true);}catch(e){} video.pause(); }
+    else { try{sys.unpause();}catch(e){} }
+  });
+})();
+</script>
+</body>
+</html>
